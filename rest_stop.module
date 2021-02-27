@@ -1,0 +1,368 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function rest_stop_menu() {
+    $items = array();
+
+    //return JSON for individual nodes
+    $items['api/json/%/%'] = array(
+        'page callback' => 'rest_stop_type',
+        'access callback' => TRUE,
+        'page arguments' => array(2, 3),
+    );
+    $items['api/json/alias/%'] = array(
+        'page callback' => 'rest_stop_by_alias',
+        'access callback' => TRUE,
+        'page arguments' => array(3),
+    
+      );
+      return $items;
+
+}
+
+
+/**
+ *  This function is setting all json formatting.
+ */
+function rest_stop_type($type, $nid) {
+    return rest_stop_creator($type, $nid);
+  }
+  
+  /**
+   * This function is like a middleware for adding multiples callbacks that can re-use
+   * some of our exiting code. 
+   */
+  function rest_stop_creator($type, $nid){
+    dpm("Hello: ".$type.$nid);
+    $json = entity_load($type, $nid);
+    dpm('gettype($json)');
+    if ($json) {
+      $page['config'] = rest_stop_config($type, $json);
+      $page['content'] = rest_stop_fields($type, $json);        
+    }
+  
+    // If we could not find any results because the json is empty.
+    // Showing a message instead of blank page. 
+    if (empty($json)) {
+      $page = t('No results found');
+    }
+    
+    backdrop_json_output($page);
+    return backdrop_exit();
+  }
+  
+  /**
+   * This function will get the language of the API.
+   */
+  function rest_stop_language(){
+    $query = backdrop_get_query_parameters();
+  
+    if (isset($query['language'])) {
+      $language = $query['language'];
+    }
+  
+    else{
+      $language = 'und';
+    }
+    return $language;
+  }
+  
+  
+  /**
+   *  Function to get the element base on the alias.
+   * @param $type
+   *   The entity
+   */
+  function rest_stop_by_alias($type){
+  
+    $query = backdrop_get_query_parameters();
+    $alias = $query['url'];
+  
+    $sql = "SELECT source FROM `url_alias` WHERE alias = :alias";  
+    $result = db_query($sql, array(':alias' => $alias));
+    $data = array();
+    foreach($result as $key => $value) {
+      $original_url = $value->source;    
+      
+      $nid = intval(preg_replace('/[^0-9]+/', '', $original_url), 10);
+      $original_url = str_replace($nid, '', $original_url);
+      $original_url = rtrim($original_url, '/\\');
+      $entity = str_replace('/', '_', $original_url);
+      $data[$entity] = $nid;
+    }
+    
+    $nid = $data[$type];
+  
+    return rest_stop_creator($type, $nid);
+  
+  }
+  
+  /**
+   * This will set fields into an field object.
+   */
+  function rest_stop_config($type, $json){
+  
+    if ($type == 'node') {
+      $config_elements = array("nid", "vid", "type", "langcode", "uid", "status", "created", "changed", "promote", "revision_timestamp", "revision_uid", "log");
+    }
+    if ($type == 'taxonomy_term') {
+      $config_elements = array("tid", "vocabulary");
+    }
+  
+    foreach ($config_elements as $key => $value) {
+      $page[$value] = $json->$value;
+    }
+    
+    backdrop_alter('rest_stop_config', $page, $type, $json);
+  
+    return $page;
+  }
+  
+  
+  /**
+   * This will set fields into an field object.
+   */
+  function rest_stop_fields($type, $json){
+    $page['default_values'] = rest_stop_default_entities_fields($type, $json);
+  
+    foreach ($json as $key => $value) {
+      if(preg_match('/^field_/', $key)){
+        $field_new_value = rest_stop_field_formating($key, $value);
+        $key = str_replace("field_", "", $key);
+        $page[$key] = $field_new_value;
+      }
+    }
+  
+    backdrop_alter('rest_stop_fields', $page, $type, $json);
+    return $page;
+  }
+  /**
+   * This function is to handle the hardcore fields that Core set by default.
+   */
+  function rest_stop_default_entities_fields($type, $json){
+    $language = rest_stop_language();
+  
+    if ($type == 'node') {
+      $page['title'] = $json->title;
+      $page['body'] = rest_stop_text_type($json->body, $language);
+    }
+    if ($type == 'taxonomy_term') {
+      $page['name'] = $json->name;
+      $page['description'] = $json->description;
+    }
+  
+    backdrop_alter('rest_stop_default_entities_fields', $page, $type, $json);
+    return $page;
+  }
+                                                                                                          
+  /**
+   * This function will get type of the field.
+   */
+  function rest_stop_get_field_type($field){
+    $field_config = config_get('field.field.' . $field, $option = NULL);
+    return $field_config['type'];
+  }
+  
+  /**
+   * Base on the field this will change the formatting.
+   */
+  function rest_stop_field_formating($field, $value){
+      $field_type = rest_stop_get_field_type($field);
+      $language = rest_stop_language();
+  
+      if ($field_type == 'text') {
+        $field_new_value = rest_stop_text_type($value, $language);
+      }
+      if ($field_type == 'date' || $field_type == 'datestamp' || $field_type == 'datetime') {
+        $field_new_value = rest_stop_date_type($value, $language);
+      }
+      if ($field_type == 'list_boolean' || $field_type == 'list_boolean') {
+        $field_new_value = rest_stop_list_type($value, $language);
+      }
+      if ($field_type == 'image') {
+        $field_new_value = rest_stop_image_type($value, $language);
+      }
+      if ($field_type == 'email') {
+        $field_new_value = rest_stop_email_type($value, $language);
+      }
+      if ($field_type == 'file') {
+        $field_new_value = rest_stop_file_type($value, $language);
+      }
+      if ($field_type == 'link_field') {
+        $field_new_value = rest_stop_link_type($value, $language);
+      }
+      if ($field_type == 'tablefield') {
+        $field_new_value = rest_stop_tablefield_type($value, $language);
+      }
+      if ($field_type == 'node_reference') {
+        $field_new_value = rest_stop_node_reference_type($value, $language);
+      }
+  
+      backdrop_alter('rest_stop_field_formating', $field, $value, $field_new_value);
+  
+      return $field_new_value;
+  
+  }
+  
+  /**
+   * Node Reference Type formatting.
+   */
+   function rest_stop_node_reference_type($value, $language){
+      foreach ($value[$language] as $data_key => $data_key_value) {     
+        $type ='node';
+        $json = entity_load('node', $value[$language][$data_key]['nid']);
+        $bundle = entity_extract_ids($type, $json);
+        $bundle = $bundle[2];
+        $page[$data_key][$bundle] = rest_stop_fields($type, $json);      
+       }   
+     
+      backdrop_alter('rest_stop_node_reference_type', $page, $value);
+  
+     return $page;
+   }
+  
+  /**
+   * Table type formatting.
+   */
+  function rest_stop_tablefield_type($value, $language){
+    $table_header = $value[$language][0]['tabledata'][0];
+    $table_rows = $value[$language][0]['tabledata'][1];
+  
+    foreach ($table_rows as $field_data_key => $field_data_value) {
+      $row_name = $table_header[$field_data_key];
+      $page[][$row_name][] = $table_rows[$field_data_key];
+    }
+  
+    backdrop_alter('rest_stop_tablefield_type', $page, $value);
+  
+    return $page;
+  }
+  
+  
+  /**
+   * Text type formatting.
+   */
+  function rest_stop_text_type($value, $language){
+    $data = $value[$language];
+    
+    if (is_array($data)) {
+      foreach ($value[$language] as $data_key => $data_key_value) {
+         $page[$data_key]['value'] = $value[$language][$data_key]['value'];
+      }    
+    }
+  
+    backdrop_alter('rest_stop_text_type', $page, $value);
+    return $page;
+  }
+  
+  
+  /**
+   * Date type formatting.
+   */
+  function rest_stop_date_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+      foreach ($value[$language] as $data_key => $data_key_value) {
+        $page['value'] = $value[$language][$data_key]['value'];
+      }
+    }
+  
+    backdrop_alter('rest_stop_date_type', $page, $value);
+    return $page;
+  }
+  
+  /**
+   * List type formatting.
+   */
+  function rest_stop_list_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+      foreach ($value[$language] as $data_key => $data_key_value) {
+        $page['value'] = $value[$language][$data_key]['value'];
+      }
+    }
+    backdrop_alter('rest_stop_list_type', $page, $value);
+    return $page;
+  }
+  
+  /**
+   * Email type formatting.
+   */
+   function rest_stop_email_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+      foreach ($data as $data_key => $data_key_value) {
+         $page['value'] = $value[$language][$data_key]['email'];
+      }
+    }
+  
+    backdrop_alter('rest_stop_email_type', $page, $value);
+    return $page;
+   }
+  
+  /**
+   * Link type formatting.
+   */
+  function rest_stop_link_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+      foreach ($data as $data_key => $data_key_value) {
+        $page['title'] = $value[$language][$data_key]['title'];
+        $page['url'] = $value[$language][$data_key]['url'];
+      }
+    }
+  
+    backdrop_alter('rest_stop_link_type', $page, $value);
+    return $page;
+  }
+  
+  /**
+   * Image type formatting.
+   */
+  function rest_stop_image_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+      foreach ($data as $data_key => $data_key_value) {
+          $uri = $value[$language][$data_key]['uri'];
+          if ($uri != NULL) {
+            $page['alt'] = $value[$language][$data_key]['alt'];
+            $page['url'] = _wrap_file_url($uri);
+        }    
+      }    
+    }
+  
+    backdrop_alter('rest_stop_image_type', $page, $value);
+    return $page;
+  }
+  
+  /**
+   * File type formatting.
+   */
+   function rest_stop_file_type($value, $language){
+    $data = $value[$language];
+    if (is_array($data)) {
+     foreach ($data as $data_key => $data_key_value) {
+       $uri = $value[$language][$data_key]['uri'];
+       if ($uri != NULL) {
+           $page['url'] = _wrap_file_url($uri);
+       }    
+     }
+    }
+  
+    backdrop_alter('rest_stop_file_type', $page, $value);
+    return $page;
+   }
+  
+  /**
+   * Wrapper to get the URL of a file.
+   */
+  function _wrap_file_url($uri){
+    if ($uri != NULL) {
+      // TODO: For now lets hardcore to files/
+      // We need to make this more robots later.
+      return '/files/' . file_uri_target($uri);
+    }
+  }
+  

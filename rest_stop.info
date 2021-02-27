@@ -1,0 +1,4 @@
+name = Rest Stop
+description = Configure REST endpoints for a headless experience.
+package = headless
+backdrop = 1.x
