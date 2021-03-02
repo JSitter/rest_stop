@@ -159,7 +159,7 @@ function _rest_stop_load_endpoints() {
 }
 
 /** Simple Node type retrieval 
- *  Sample funcationality
+ *  Sample functionality
 */
 /**
  *  This function is setting all json formatting.
