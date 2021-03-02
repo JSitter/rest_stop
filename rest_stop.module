@@ -1,28 +1,170 @@
 <?php
+/**
+ * requirement php >= v5.2.0
+ */
+/**
+ * Implements hook_permission().
+ */
+return array(
+  'rest_endpoint_admin' => array(
+    'title' => t('Administer Rest Endpoints'),
+  ),
+);
 
 /**
  * Implements hook_menu().
  */
 function rest_stop_menu() {
-    $items = array();
+    $endpoints = array();
 
-    //return JSON for individual nodes
-    $items['api/json/%/%'] = array(
-        'page callback' => 'rest_stop_type',
-        'access callback' => TRUE,
-        'page arguments' => array(2, 3),
+    $endpoints['admin/config/administration/rest-stop'] = array(
+      'title' => 'Configure REST Endpoints',
+      'description' => t('Administer REST endpoints'),
+      'page callback' => 'backdrop_get_form',
+      'page arguments' => array('rest_stop_config_form'),
+      'access arguments' => array('rest_endpoint_admin'),
     );
-    $items['api/json/alias/%'] = array(
-        'page callback' => 'rest_stop_by_alias',
-        'access callback' => TRUE,
-        'page arguments' => array(3),
+
+    rest_stop_endpoint_builder($endpoints);
     
-      );
-      return $items;
+    return $endpoints;
+}
+
+/**
+ * Implements form_hook_process().
+ * @todo Process endpoint builder data
+ */
+function rest_stop_endpoint_builder_process($element, &$form_state, $complete_form) {
 
 }
 
+/**
+ * Implements form_hook_validate().
+ * @todo Validate endpoints
+ */
+function rest_stop_endpoint_builder_validate($element, &$form_state) {
+  return $element;
+}
 
+/**
+ * Implements hook_form().
+ * Rest stop endpoint settings form.
+ */
+function rest_stop_config_form($form, &$form_state) {
+  $endpoint_base = state_get('rest stop endpoint base');
+  dpm(t("Endpoints: ".$endpoints));
+  // Set default endpoint base if not set
+  $endpoint_base ? $endpoint_base : 'api';
+  $cors_whitelist = state_get('rest stop cors whitelist');
+  $cors_whitelist ? $cors_whitelist : '*';
+  $endpoints = state_get("rest stop endpoints");
+  
+  dpm(t("whitelist: ".$cors_whitelist));
+  dpm(t("base: ".$endpoint_base));
+
+  $form['endpoint_base'] = array(
+    '#type' => 'textfield',
+    '#size' => '32',
+    '#title' => t('Endpoint base'),
+    '#description' => t('Set endpoint base to differentiate between api and html endpoints. i.e. mysite.com/endpointbase/node/1'),
+    '#default_value' => $endpoint_base,
+
+  );
+
+  $form['cors_origin_whitelist'] = array(
+    '#type' => 'textfield',
+    '#size' => '32',
+    '#title' => t('Cross Origin Whitelist'),
+    '#description' => t('White list of servers allowed access'),
+    '#default_value' => $cors_whitelist,
+  );
+
+  $form['endpoints'] = array(
+    '#type' => 'textarea',
+    '#title' => t('REST Endpoints'),
+    '#description' => t('Saved endpoints'),
+    '#default_value' => $endpoints,
+    '#col' => '500',
+    '#row' => '500',
+  );
+
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Save'
+  );
+  return $form;
+}
+
+/**
+ * Implements hook_form_submit().
+ * Rest stop settings submit handler.
+ */
+function rest_stop_config_form_submit($form, &$form_state) {
+ $endpoint_base = $form_state['values']['endpoint_base'];
+ $cors_origin_whitelist = $form_state['values']['cors_origin_whitelist'];
+ $endpoints = $form_state['values']['endpoints'];
+ dpm('Form submit handler -- '.$endpoint_base.' : '.$cors_origin_whitelist.' : '.$endpoints);
+  try{
+    state_set('rest stop endpoint base', $form_state['values']['endpoint_base']);
+    state_set('rest stop cors whitelist', $form_state['values']['cors_origin_whitelist']);
+    state_set('rest stop endpoints', $form_state['values']['endpoints']);
+
+  } catch(Exception $err) {
+    watchdog($err->getMessage());
+  }
+}
+
+/**
+ * Rest stop function to build endpoints from user settings
+ * @param &$endpoint_array (array)
+ */
+function rest_stop_endpoint_builder(&$endpoint_array) {
+  // Test Routes return JSON for individual nodes
+  $endpoint_array['api/json/%/%'] = array(
+    'page callback' => 'rest_stop_type',
+    'access callback' => TRUE,
+    'page arguments' => array(2, 3),
+  );
+
+  // Test Route
+  $endpoint_array['api/json/alias/%'] = array(
+      'page callback' => 'rest_stop_by_alias',
+      'access callback' => TRUE,
+      'page arguments' => array(3),
+
+  );
+}
+
+/**
+ * Rest Stop function to save endpoints when $endpoints 
+ * is an associative array.
+ */
+function _rest_stop_save_endpoints($endpoints) {
+  state_set('endpoints', json_encode($endpoints));
+}
+
+/** 
+ * Rest stop helper function to read endpoints.
+ */
+function _rest_stop_read_endpoints() {
+  $ep = state_get('endpoints');
+  $ep = $ep ? $ep : json_encode(array());
+  return $ep;
+}
+
+/**
+ * Rest stop helper function to load endpoints.
+ */
+function _rest_stop_load_endpoints() {
+  $current_points = state_get('rest stop endpoints');
+  $current_points = $current_points ? $current_points : array();
+  return json_decode($current_points);
+}
+
+/** Simple Node type retrieval 
+ *  Sample funcationality
+*/
 /**
  *  This function is setting all json formatting.
  */
@@ -35,9 +177,7 @@ function rest_stop_type($type, $nid) {
    * some of our exiting code. 
    */
   function rest_stop_creator($type, $nid){
-    dpm("Hello: ".$type.$nid);
     $json = entity_load($type, $nid);
-    dpm('gettype($json)');
     if ($json) {
       $page['config'] = rest_stop_config($type, $json);
       $page['content'] = rest_stop_fields($type, $json);        
