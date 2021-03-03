@@ -15,8 +15,8 @@ function _rest_stop_save_endpoints($endpoints) {
 /**
  * Build test routes
  */
-function _test_route_builder(&$endpoint_array){
-
+function _test_route_builder(){
+    $endpoint_array = array();
     // Test Routes return JSON for individual nodes
     $endpoint_array['api/json/%/%'] = array(
       'page callback' => 'rest_stop_type',
@@ -40,11 +40,11 @@ function _test_route_builder(&$endpoint_array){
    * @param &$endpoint_array (array)
    */
   function rest_stop_endpoint_builder(&$endpoint_array) {
-    // _test_route_builder($endpoint_array);
-    // $ep = _rest_stop_read_endpoints();
+    // _test_route_builder();
+    $ep = _rest_stop_read_endpoints();
     // $ep = array();
     // _test_route_builder($ep);
-    $ep = _rest_stop_read_endpoints();
+    // $ep = _rest_stop_read_endpoints();
     foreach( array_keys($ep) as $index) {
       $endpoint_array[$index] = $ep[$index];
     }
@@ -109,18 +109,10 @@ function _test_route_builder(&$endpoint_array){
    * Helper function to update endpoint string
    */
   function _rest_stop_update_endpoint_from_string($text) {
-    $encoded = _rest_stop_base64_encode($text);
-    state_set('rest stop endpoints', $encoded);
+    $encoded = json_decode($text, True);
+    $cleaned_endpoints = array();
+    foreach(array_keys($encoded) as $url) {
+        $cleaned_endpoints[_rest_stop_encode_url($url)] = $encoded[$url];
+    }
+    state_set('rest stop endpoints', json_encode($cleaned_endpoints));
   }
-  
-/**
- * Rest stop helper function to load endpoints.
- */
-// function _rest_stop_load_endpoints() {
-//   $current_points = state_get('rest stop endpoints');
-//   $current_points = $current_points ? $current_points : "";
-
-//   $current_points = base64_decode($current_points);
-//   dpm($current_points);
-//   return json_decode($current_points);
-// }
