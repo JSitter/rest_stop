@@ -5,6 +5,7 @@
 /**
  * Implements hook_permission().
  */
+require_once 'rest_stop_helpers.php';
 return array(
   'rest_endpoint_admin' => array(
     'title' => t('Administer Rest Endpoints'),
@@ -57,7 +58,7 @@ function rest_stop_config_form($form, &$form_state) {
   $endpoint_base ? $endpoint_base : 'api';
   $cors_whitelist = state_get('rest stop cors whitelist');
   $cors_whitelist ? $cors_whitelist : '*';
-  $endpoints = state_get("rest stop endpoints");
+  $endpoints = _rest_stop_read_endpoints_string();
 
   $form['endpoint_base'] = array(
     '#type' => 'textfield',
@@ -100,66 +101,20 @@ function rest_stop_config_form($form, &$form_state) {
 function rest_stop_config_form_submit($form, &$form_state) {
  $endpoint_base = $form_state['values']['endpoint_base'];
  $cors_origin_whitelist = $form_state['values']['cors_origin_whitelist'];
- $endpoints = $form_state['values']['endpoints'];
+ $form_endpoints = $form_state['values']['endpoints'];
+
   try{
     state_set('rest stop endpoint base', $form_state['values']['endpoint_base']);
     state_set('rest stop cors whitelist', $form_state['values']['cors_origin_whitelist']);
-    state_set('rest stop endpoints', $form_state['values']['endpoints']);
+    _rest_stop_update_endpoint_from_string($form_state['values']['endpoints']);
 
   } catch(Exception $err) {
     watchdog($err->getMessage());
   }
 }
 
-/**
- * Rest stop function to build endpoints from user settings
- * @param &$endpoint_array (array)
- */
-function rest_stop_endpoint_builder(&$endpoint_array) {
-  // Test Routes return JSON for individual nodes
-  $endpoint_array['api/json/%/%'] = array(
-    'page callback' => 'rest_stop_type',
-    'access callback' => TRUE,
-    'page arguments' => array(2, 3),
-  );
-
-  // Test Route
-  $endpoint_array['api/json/alias/%'] = array(
-      'page callback' => 'rest_stop_by_alias',
-      'access callback' => TRUE,
-      'page arguments' => array(3),
-
-  );
-}
-
-/**
- * Rest Stop function to save endpoints when $endpoints 
- * is an associative array.
- */
-function _rest_stop_save_endpoints($endpoints) {
-  state_set('endpoints', json_encode($endpoints));
-}
-
-/** 
- * Rest stop helper function to read endpoints.
- */
-function _rest_stop_read_endpoints() {
-  $ep = state_get('endpoints');
-  $ep = $ep ? $ep : json_encode(array());
-  return $ep;
-}
-
-/**
- * Rest stop helper function to load endpoints.
- */
-function _rest_stop_load_endpoints() {
-  $current_points = state_get('rest stop endpoints');
-  $current_points = $current_points ? $current_points : array();
-  return json_decode($current_points);
-}
-
 /** Simple Node type retrieval 
- *  Sample functionality
+ *  Sample functionality from json api
 */
 /**
  *  This function is setting all json formatting.
